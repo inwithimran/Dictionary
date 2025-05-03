@@ -1,20 +1,113 @@
-
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ইংরেজি-বাংলা ডিকশনারী</title>
-  <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6200ea">
+    <title>English to Bangla Dictionary</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" onerror="console.warn('Font Awesome failed to load')">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Serif+Bengali:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
 </head>
-<body>
-  <div class="container">
-    <h1>ইংরেজি-বাংলা ডিকশনারী</h1>
-    <input type="text" id="search-box" placeholder="ইংরেজি শব্দ লিখুন..." oninput="searchWord()" aria-label="Search for English words">
-    <div id="suggestions" class="suggestions"></div>
-    <div id="result" class="result"></div>
-  </div>
+<body class="font-medium theme-purple">
+    <div class="splash-screen">
+        <h1>English to Bangla Dictionary</h1>
+        <div class="spinner"></div>
+    </div>
+    <div class="container">
+        <header>
+            <button class="header-btn" id="settings-btn"><i class="fas fa-cog"></i></button>
+            <h1>E2B Dictionary</h1>
+            <label class="dark-mode-toggle">
+                <input type="checkbox" id="dark-mode-toggle">
+                <span class="toggle-circle"></span>
+            </label>
+        </header>
+        <div class="search-container">
+            <div class="search-wrapper">
+                <input type="text" id="search-input" placeholder="Search for a word..." autocomplete="off">
+                <button class="search-btn" id="search-btn"><i class="fas fa-search"></i></button>
+            </div>
+            <button class="clear-btn" id="clear-btn" disabled><i class="fas fa-times"></i></button>
+        </div>
+        <div class="content" id="content">
+            <div id="home" class="tab-content active">
+                <div class="offline-message" id="offline-message">Offline: Showing cached data</div>
+                <div class="loading-spinner" id="loading-spinner"></div>
+                <div id="word-result"></div>
+            </div>
+            <div id="history" class="tab-content">
+                <div class="history-header">
+                    <h3>Search History</h3>
+                    <button class="clear-history-btn" id="clear-history">Clear All</button>
+                </div>
+                <ul id="history-list" class="history-list"></ul>
+            </div>
+            <div id="favorites" class="tab-content">
+                <h3>Favorites</h3>
+                <ul id="favorites-list" class="favorites-list"></ul>
+            </div>
+        </div>
+        <nav>
+            <button class="nav-btn active" data-tab="home"><i class="fas fa-home"></i><span>Home</span></button>
+            <button class="nav-btn" data-tab="history"><i class="fas fa-history"></i><span>History</span></button>
+            <button class="nav-btn" data-tab="favorites"><i class="fas fa-heart"></i><span>Favorites</span></button>
+        </nav>
+    </div>
+    <div class="settings-panel" id="settings-panel">
+        <div class="settings-header">
+            <h3>Settings</h3>
+            <button class="close-settings-btn" id="close-settings"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-text-height"></i>
+            <label>Font Size</label>
+            <select id="font-size">
+                <option value="font-small">Small</option>
+                <option value="font-medium" selected>Medium</option>
+                <option value="font-large">Large</option>
+            </select>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-palette"></i>
+            <label>Theme Color</label>
+            <select id="theme-color">
+                <option value="theme-purple" data-color="#6200ea" selected>Purple <span class="color-swatch" style="background: #6200ea;"></span></option>
+                <option value="theme-blue" data-color="#0288d1">Blue <span class="color-swatch" style="background: #0288d1;"></span></option>
+                <option value="theme-green" data-color="#2e7d32">Green <span class="color-swatch" style="background: #2e7d32;"></span></option>
+                <option value="theme-red" data-color="#d32f2f">Red <span class="color-swatch" style="background: #d32f2f;"></span></option>
+                <option value="theme-orange" data-color="#f57c00">Orange <span class="color-swatch" style="background: #f57c00;"></span></option>
+                <option value="theme-teal" data-color="#00897b">Teal <span class="color-swatch" style="background: #00897b;"></span></option>
+                <option value="theme-pink" data-color="#c2185b">Pink <span class="color-swatch" style="background: #c2185b;"></span></option>
+                <option value="theme-indigo" data-color="#3f51b5">Indigo <span class="color-swatch" style="background: #3f51b5;"></span></option>
+            </select>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-language"></i>
+            <label>Language</label>
+            <select id="language">
+                <option value="en" selected>English</option>
+                <option value="bn" disabled>Bangla (Coming Soon)</option>
+            </select>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-trash-alt"></i>
+            <label>Clear Cache</label>
+            <button id="clear-cache">Clear</button>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-file-export"></i>
+            <label>Export History</label>
+            <button id="export-history">Export</button>
+        </div>
+        <div class="settings-item">
+            <i class="fas fa-comments"></i>
+            <label>Send feedback</label>
+            <button id=""><a href="mailto:in.with.imran@gmail.com" style="text-decoration:none;color:#fff;">Send</a></button>
+        </div>
+    </div>
 
-  <script src="script.js"></script>
+    <script src="data/dictionary.js"></script>
+    <script src="js/script.js"></script>
 </body>
 </html>
