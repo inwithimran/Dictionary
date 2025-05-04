@@ -47,11 +47,23 @@
                 <h3>Favorites</h3>
                 <ul id="favorites-list" class="favorites-list"></ul>
             </div>
+            <div id="quiz" class="tab-content">
+                <h3>Quiz</h3>
+                <div id="quiz-container">
+                    <div id="quiz-score">Score: <span id="score">0</span> / <span id="total-questions">0</span></div>
+                    <div id="quiz-question"></div>
+                    <div id="quiz-options" class="quiz-options"></div>
+                    <div id="quiz-feedback"></div>
+                    <button class="quiz-btn" id="next-question" disabled>Next Question</button>
+                    <button class="quiz-btn" id="restart-quiz" style="display: none;">Restart Quiz</button>
+                </div>
+            </div>
         </div>
         <nav>
             <button class="nav-btn active" data-tab="home"><i class="fas fa-home"></i><span>Home</span></button>
             <button class="nav-btn" data-tab="history"><i class="fas fa-history"></i><span>History</span></button>
             <button class="nav-btn" data-tab="favorites"><i class="fas fa-heart"></i><span>Favorites</span></button>
+            <button class="nav-btn" data-tab="quiz"><i class="fas fa-question-circle"></i><span>Quiz</span></button>
         </nav>
     </div>
     <div class="settings-panel" id="settings-panel">
@@ -103,11 +115,13 @@
         <div class="settings-item">
             <i class="fas fa-comments"></i>
             <label>Send feedback</label>
-            <button id=""><a href="mailto:in.with.imran@gmail.com" style="text-decoration:none;color:#fff;">Send</a></button>
+            <button id=""><a href="/cdn-cgi/l/email-protection#d9b0b7f7aeb0adb1f7b0b4abb8b799beb4b8b0b5f7bab6b4" style="text-decoration:none;color:#fff;">Send</a></button>
         </div>
     </div>
 
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
     <script src="data/dictionary.js"></script>
     <script src="js/script.js"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93a448f2d881bfed',t:'MTc0NjMyMjc3My4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>
