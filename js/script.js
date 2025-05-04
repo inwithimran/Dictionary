@@ -26,6 +26,22 @@ const loadingSpinner = document.getElementById('loading-spinner');
 const offlineMessage = document.getElementById('offline-message');
 const content = document.getElementById('content');
 const exportHistoryBtn = document.getElementById('export-history');
+const quizContainer = document.getElementById('quiz-container');
+const quizQuestion = document.getElementById('quiz-question');
+const quizOptions = document.getElementById('quiz-options');
+const quizFeedback = document.getElementById('quiz-feedback');
+const nextQuestionBtn = document.getElementById('next-question');
+const restartQuizBtn = document.getElementById('restart-quiz');
+const scoreDisplay = document.getElementById('score');
+const totalQuestionsDisplay = document.getElementById('total-questions');
+
+let quizState = JSON.parse(localStorage.getItem('quizState')) || {
+    currentQuestion: null,
+    score: 0,
+    totalQuestions: 0,
+    maxQuestions: 10,
+    isActive: false
+};
 
 try {
     if (localStorage.getItem('darkMode') === 'true') {
@@ -48,7 +64,7 @@ if (!navigator.onLine && offlineCache) {
 }
 
 try {
-    document.querySelectorAll('.nav-btn, .header-btn, .favorite-btn, .delete-btn, .search-btn, .clear-btn:not(:disabled), .clear-history-btn, .close-settings-btn, #clear-cache, #export-history, .tts-btn').forEach(btn => {
+    document.querySelectorAll('.nav-btn, .header-btn, .favorite-btn, .delete-btn, .search-btn, .clear-btn:not(:disabled), .clear-history-btn, .close-settings-btn, #clear-cache, #export-history, .tts-btn, .quiz-btn, .quiz-option').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const ripple = document.createElement('span');
             ripple.classList.add('ripple');
@@ -58,7 +74,7 @@ try {
             ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
             ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
             btn.appendChild(ripple);
-            const timeoutId = setTimeout(() => ripple.remove(), 600);
+            setTimeout(() => ripple.remove(), 600);
         });
     });
 } catch (error) {
@@ -132,8 +148,8 @@ function displayWord(data) {
                 <div class="word-header">
                     <h2>${data.word}</h2>
                     <div class="word-actions">
-                        <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-word="${data.word}"><i class="fas fa-heart"></i></button>
                         <button class="tts-btn" data-word="${data.word}" data-meaning="${data.meaning}"><i class="fas fa-volume-up"></i></button>
+                        <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-word="${data.word}"><i class="fas fa-heart"></i></button>
                     </div>
                 </div>
                 <p class="meaning"><strong>Meaning:</strong> ${data.meaning}</p>
@@ -200,7 +216,7 @@ function renderHistory() {
             return `
                 <li>
                     <i class="fas fa-clock list-icon"></i>
-                    <span class="list-word" data-word="${word}">${word} - ${meaning}</span>
+                    <span class="list-word" data-word="${word}"><span class="english-word">${word}</span> - ${meaning}</span>
                     <button class="delete-btn" data-word="${word}"><i class="fas fa-trash"></i></button>
                 </li>
             `;
@@ -221,7 +237,7 @@ function renderFavorites() {
             return `
                 <li>
                     <i class="fas fa-heart list-icon"></i>
-                    <span class="list-word" data-word="${word}">${word} - ${meaning}</span>
+                    <span class="list-word" data-word="${word}"><span class="english-word">${word}</span> - ${meaning}</span>
                     <button class="delete-btn" data-word="${word}"><i class="fas fa-trash"></i></button>
                 </li>
             `;
@@ -284,6 +300,11 @@ function switchTab(tab) {
     tabContents.forEach(content => content.classList.remove('active'));
     document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
     document.getElementById(tab).classList.add('active');
+    if (tab === 'quiz' && !quizState.isActive) {
+        startQuiz();
+    } else if (tab === 'quiz') {
+        renderQuiz();
+    }
 }
 
 content.addEventListener('touchstart', (e) => {
@@ -293,7 +314,7 @@ content.addEventListener('touchstart', (e) => {
 content.addEventListener('touchend', (e) => {
     const touchEndX = e.changedTouches[0].clientX;
     const diff = touchStartX - touchEndX;
-    const tabs = ['home', 'history', 'favorites'];
+    const tabs = ['home', 'history', 'favorites', 'quiz'];
     const currentIndex = tabs.indexOf(currentTab);
     if (diff > 50 && currentIndex < tabs.length - 1) {
         switchTab(tabs[currentIndex + 1]);
@@ -395,9 +416,11 @@ clearCacheBtn.addEventListener('click', async (e) => {
         searchHistory = [];
         favorites = [];
         offlineCache = null;
+        quizState = { currentQuestion: null, score: 0, totalQuestions: 0, maxQuestions: 10, isActive: false };
         localStorage.removeItem('searchHistory');
         localStorage.removeItem('favorites');
         localStorage.removeItem('offlineCache');
+        localStorage.removeItem('quizState');
         renderHistory();
         renderFavorites();
         wordResult.innerHTML = '';
@@ -419,6 +442,155 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
+
+function getRandomWords(count) {
+    try {
+        if (typeof dictionary === 'undefined' || !dictionary) {
+            throw new Error('Dictionary data is not loaded');
+        }
+        const words = Object.keys(dictionary);
+        if (words.length < count) {
+            return words.sort(() => 0.5 - Math.random());
+        }
+        const shuffled = words.sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, count);
+    } catch (error) {
+        console.error('Error getting random words:', error);
+        return [];
+    }
+}
+
+function generateQuizQuestion() {
+    try {
+        const words = getRandomWords(4);
+        if (words.length < 1) {
+            throw new Error('Not enough words in dictionary for quiz');
+        }
+        const correctIndex = Math.floor(Math.random() * words.length);
+        const correctWord = words[correctIndex];
+        const isEnglishToBangla = Math.random() < 0.5; // Randomly choose direction
+        return {
+            word: correctWord,
+            meaning: dictionary[correctWord],
+            options: words,
+            correctIndex,
+            isEnglishToBangla
+        };
+    } catch (error) {
+        console.error('Error generating quiz question:', error);
+        return null;
+    }
+}
+
+function renderQuiz() {
+    try {
+        if (!quizContainer) {
+            throw new Error('Quiz container not found');
+        }
+        if (quizState.totalQuestions >= quizState.maxQuestions) {
+            quizQuestion.innerHTML = '<h2>Quiz Completed!</h2>';
+            quizOptions.innerHTML = '';
+            quizFeedback.innerHTML = `Final Score: ${quizState.score} / ${quizState.totalQuestions}`;
+            nextQuestionBtn.style.display = 'none';
+            restartQuizBtn.style.display = 'block';
+            quizState.isActive = false;
+            localStorage.setItem('quizState', JSON.stringify(quizState));
+            return;
+        }
+
+        if (!quizState.currentQuestion) {
+            quizState.currentQuestion = generateQuizQuestion();
+        }
+
+        if (!quizState.currentQuestion) {
+            quizQuestion.innerHTML = '<p>Error: Unable to load quiz question.</p>';
+            quizOptions.innerHTML = '';
+            quizFeedback.innerHTML = '';
+            nextQuestionBtn.style.display = 'none';
+            restartQuizBtn.style.display = 'block';
+            quizState.isActive = false;
+            localStorage.setItem('quizState', JSON.stringify(quizState));
+            return;
+        }
+
+        const { meaning, options, isEnglishToBangla } = quizState.currentQuestion;
+        quizQuestion.innerHTML = isEnglishToBangla
+            ? `<p>What is the Bangla meaning of "${quizState.currentQuestion.word}"?</p>`
+            : `<p>What is the English word for "${meaning}"?</p>`;
+        quizOptions.innerHTML = options.map((option, index) => `
+            <button class="quiz-option" data-index="${index}">
+                ${isEnglishToBangla ? dictionary[option] : option}
+            </button>
+        `).join('');
+        quizFeedback.innerHTML = '';
+        nextQuestionBtn.disabled = true;
+        nextQuestionBtn.style.display = 'block';
+        restartQuizBtn.style.display = 'none';
+        scoreDisplay.textContent = quizState.score;
+        totalQuestionsDisplay.textContent = quizState.totalQuestions;
+        localStorage.setItem('quizState', JSON.stringify(quizState));
+    } catch (error) {
+        console.error('Error rendering quiz:', error);
+        quizQuestion.innerHTML = '<p>Error loading quiz.</p>';
+        quizOptions.innerHTML = '';
+        quizFeedback.innerHTML = '';
+        nextQuestionBtn.style.display = 'none';
+        restartQuizBtn.style.display = 'block';
+        quizState.isActive = false;
+        localStorage.setItem('quizState', JSON.stringify(quizState));
+    }
+}
+
+function startQuiz() {
+    quizState = {
+        currentQuestion: null,
+        score: 0,
+        totalQuestions: 0,
+        maxQuestions: 10,
+        isActive: true
+    };
+    localStorage.setItem('quizState', JSON.stringify(quizState));
+    renderQuiz();
+}
+
+quizOptions.addEventListener('click', (e) => {
+    const optionBtn = e.target.closest('.quiz-option');
+    if (!optionBtn || !nextQuestionBtn.disabled) return;
+    try {
+        const selectedIndex = parseInt(optionBtn.dataset.index);
+        quizState.totalQuestions++;
+        const { word, meaning, correctIndex, isEnglishToBangla } = quizState.currentQuestion;
+        if (selectedIndex === correctIndex) {
+            quizState.score++;
+            quizFeedback.innerHTML = '<p class="correct">Correct!</p>';
+            optionBtn.classList.add('correct');
+        } else {
+            const correctAnswer = isEnglishToBangla ? meaning : word;
+            quizFeedback.innerHTML = `<p class="incorrect">Incorrect. The correct answer is "${correctAnswer}".</p>`;
+            optionBtn.classList.add('incorrect');
+            quizOptions.querySelector(`button[data-index="${correctIndex}"]`).classList.add('correct');
+        }
+        scoreDisplay.textContent = quizState.score;
+        totalQuestionsDisplay.textContent = quizState.totalQuestions;
+        nextQuestionBtn.disabled = false;
+        quizOptions.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+        quizState.currentQuestion = null; // Clear current question for next render
+        localStorage.setItem('quizState', JSON.stringify(quizState));
+    } catch (error) {
+        console.error('Error handling quiz option click:', error);
+        quizFeedback.innerHTML = '<p>Error processing answer.</p>';
+    }
+});
+
+nextQuestionBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderQuiz();
+});
+
+restartQuizBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    startQuiz();
+});
 
 try {
     if (typeof dictionary === 'undefined') {
