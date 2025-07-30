@@ -1,6 +1,7 @@
 let searchHistory = JSON.parse(localStorage.getItem('searchHistory')) || [];
 let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 let offlineCache = JSON.parse(localStorage.getItem('offlineCache')) || null;
+let quizHistory = JSON.parse(localStorage.getItem('quizHistory')) || [];
 let currentTab = 'home';
 let touchStartX = 0;
 let startY, pullDistance;
@@ -39,9 +40,19 @@ let quizState = JSON.parse(localStorage.getItem('quizState')) || {
     currentQuestion: null,
     score: 0,
     totalQuestions: 0,
-    maxQuestions: 10,
-    isActive: false
+    maxQuestions: 15,
+    isActive: false,
+    isResultSaved: false,
+    timeLeft: 15
 };
+
+let timerInterval = null;
+
+// Check if dictionary is loaded
+if (typeof dictionary === 'undefined') {
+    console.error('Dictionary data is not loaded');
+    wordResult.innerHTML = '<p>Error: Dictionary data is not available. Please check if dictionary.js is loaded.</p>';
+}
 
 try {
     if (localStorage.getItem('darkMode') === 'true') {
@@ -122,12 +133,18 @@ function performSearch() {
 
 searchBtn.addEventListener('click', (e) => {
     e.preventDefault();
+    if (currentTab !== 'home') {
+        switchTab('home');
+    }
     performSearch();
 });
 
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault();
+        if (currentTab !== 'home') {
+            switchTab('home');
+        }
         performSearch();
     }
 });
@@ -200,7 +217,7 @@ wordResult.addEventListener('click', (e) => {
 function saveToHistory(word) {
     if (!searchHistory.includes(word)) {
         searchHistory.unshift(word);
-        if (searchHistory.length > 10) searchHistory.pop();
+        if (searchHistory.length > 20) searchHistory.pop();
         localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
         renderHistory();
     }
@@ -223,7 +240,7 @@ function renderHistory() {
         }).join('');
     } catch (error) {
         console.error('Error rendering history:', error);
-        historyList.innerHTML = '<p>Error loading history.</p>';
+        historyList.innerHTML = '<p>Error loading history. Dictionary data may not be available.</p>';
     }
 }
 
@@ -244,7 +261,7 @@ function renderFavorites() {
         }).join('');
     } catch (error) {
         console.error('Error rendering favorites:', error);
-        favoritesList.innerHTML = '<p>Error loading favorites.</p>';
+        favoritesList.innerHTML = '<p>Error loading favorites. Dictionary data may not be available.</p>';
     }
 }
 
@@ -362,6 +379,14 @@ closeSettingsBtn.addEventListener('click', (e) => {
     settingsPanel.classList.remove('active');
 });
 
+document.addEventListener('click', (e) => {
+    if (settingsPanel.classList.contains('active') &&
+        !settingsPanel.contains(e.target) &&
+        !settingsBtn.contains(e.target)) {
+        settingsPanel.classList.remove('active');
+    }
+});
+
 darkModeToggle.addEventListener('change', () => {
     document.body.classList.toggle('dark-mode');
     localStorage.setItem('darkMode', darkModeToggle.checked);
@@ -406,7 +431,7 @@ exportHistoryBtn.addEventListener('click', (e) => {
         document.body.removeChild(link);
     } catch (error) {
         console.error('Error exporting history:', error);
-        alert('Failed to export history.');
+        alert('Failed to export history. Dictionary data may not be available.');
     }
 });
 
@@ -416,11 +441,13 @@ clearCacheBtn.addEventListener('click', async (e) => {
         searchHistory = [];
         favorites = [];
         offlineCache = null;
-        quizState = { currentQuestion: null, score: 0, totalQuestions: 0, maxQuestions: 10, isActive: false };
+        quizState = { currentQuestion: null, score: 0, totalQuestions: 0, maxQuestions: 15, isActive: false, isResultSaved: false, timeLeft: 15 };
+        quizHistory = [];
         localStorage.removeItem('searchHistory');
         localStorage.removeItem('favorites');
         localStorage.removeItem('offlineCache');
         localStorage.removeItem('quizState');
+        localStorage.removeItem('quizHistory');
         renderHistory();
         renderFavorites();
         wordResult.innerHTML = '';
@@ -468,7 +495,7 @@ function generateQuizQuestion() {
         }
         const correctIndex = Math.floor(Math.random() * words.length);
         const correctWord = words[correctIndex];
-        const isEnglishToBangla = Math.random() < 0.5; // Randomly choose direction
+        const isEnglishToBangla = Math.random() < 0.5;
         return {
             word: correctWord,
             meaning: dictionary[correctWord],
@@ -482,19 +509,252 @@ function generateQuizQuestion() {
     }
 }
 
+function getRelativeTime(timestamp) {
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffInSeconds = Math.floor((now - past) / 1000);
+
+    const secondsInMinute = 60;
+    const secondsInHour = 3600;
+    const secondsInDay = 86400;
+    const secondsInWeek = 604800;
+    const secondsInMonth = 2592000;
+    const secondsInYear = 31536000;
+
+    if (diffInSeconds < secondsInMinute) {
+        return `${diffInSeconds} second${diffInSeconds !== 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < secondsInHour) {
+        const minutes = Math.floor(diffInSeconds / secondsInMinute);
+        return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < secondsInDay) {
+        const hours = Math.floor(diffInSeconds / secondsInHour);
+        return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < secondsInWeek) {
+        const days = Math.floor(diffInSeconds / secondsInDay);
+        return `${days} day${days !== 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < secondsInMonth) {
+        const weeks = Math.floor(diffInSeconds / secondsInWeek);
+        return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
+    } else if (diffInSeconds < secondsInYear) {
+        const months = Math.floor(diffInSeconds / secondsInMonth);
+        return `${months} month${months !== 1 ? 's' : ''} ago`;
+    } else {
+        const years = Math.floor(diffInSeconds / secondsInYear);
+        return `${years} year${years !== 1 ? 's' : ''} ago`;
+    }
+}
+
+function startTimer(newQuizOptions, newNextQuestionBtn, newQuizFeedback) {
+    clearInterval(timerInterval);
+    quizState.timeLeft = 15;
+    const timerDisplay = document.getElementById('quiz-timer').querySelector('span');
+    timerDisplay.textContent = `${quizState.timeLeft}s`;
+
+    timerInterval = setInterval(() => {
+        quizState.timeLeft--;
+        timerDisplay.textContent = `${quizState.timeLeft}s`;
+        if (quizState.timeLeft <= 0) {
+            clearInterval(timerInterval);
+            quizState.totalQuestions++;
+            const { word, meaning, correctIndex, isEnglishToBangla } = quizState.currentQuestion;
+            const correctAnswer = isEnglishToBangla ? meaning : word;
+            newQuizFeedback.innerHTML = `<p class="incorrect">Time's up! The correct answer is "${correctAnswer}".</p>`;
+            newQuizOptions.querySelector(`button[data-index="${correctIndex}"]`).classList.add('correct');
+            newNextQuestionBtn.disabled = false;
+            newQuizOptions.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+            quizState.currentQuestion = null;
+            localStorage.setItem('quizState', JSON.stringify(quizState));
+        }
+    }, 1000);
+}
+
+function triggerConfetti() {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'confetti-canvas';
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '1000';
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const particles = [];
+    const colors = ['#ff0', '#0f0', '#00f', '#f00', '#ff0'];
+
+    function createParticle() {
+        return {
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height - canvas.height,
+            size: Math.random() * 10 + 5,
+            speedX: Math.random() * 6 - 3,
+            speedY: Math.random() * 5 + 2,
+            color: colors[Math.floor(Math.random() * colors.length)]
+        };
+    }
+
+    for (let i = 0; i < 100; i++) {
+        particles.push(createParticle());
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach(p => {
+            p.x += p.speedX;
+            p.y += p.speedY;
+            p.size *= 0.98;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.fill();
+        });
+
+        particles.forEach((p, i) => {
+            if (p.size < 0.5) {
+                particles.splice(i, 1);
+                particles.push(createParticle());
+            }
+        });
+
+        if (particles.length > 0) {
+            requestAnimationFrame(animate);
+        } else {
+            document.body.removeChild(canvas);
+        }
+    }
+
+    animate();
+    setTimeout(() => {
+        particles.length = 0;
+    }, 3000);
+}
+
+function showQuizStatistics() {
+    try {
+        quizContainer.innerHTML = `
+            <div class="quiz-header">
+                <h3>Quiz Statistics</h3>
+                <div class="header-actions">
+                    <button class="quiz-btn quiz-stats-back-btn" id="quiz-stats-back">Back to Quiz</button>
+                </div>
+            </div>
+            <ul class="quiz-stats-list">
+                ${quizHistory.length === 0 ? '<li>No quiz history available.</li>' : quizHistory.map((entry, index) => {
+                    const percentage = Math.round((entry.score / entry.totalQuestions) * 100);
+                    const circumference = 2 * Math.PI * 20;
+                    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+                    return `
+                        <li>
+                            <i class="fas fa-list-ul list-icon"></i>
+                            <span class="quiz-number">Quiz ${index + 1}:</span>
+                            <span class="quiz-score">${entry.score}/${entry.totalQuestions}</span>
+                            <span class="quiz-timestamp">${getRelativeTime(entry.timestamp)}</span>
+                            <div class="quiz-progress">
+                                <svg width="50" height="50" viewBox="0 0 50 50">
+                                    <circle class="progress-ring-bg" cx="25" cy="25" r="20" />
+                                    <circle class="progress-ring" cx="25" cy="25" r="20" stroke-dasharray="${circumference}" stroke-dashoffset="${strokeDashoffset}" />
+                                </svg>
+                                <span class="quiz-percentage">${percentage}%</span>
+                            </div>
+                        </li>
+                    `;
+                }).join('')}
+            </ul>
+        `;
+        const backBtn = document.getElementById('quiz-stats-back');
+        if (backBtn) {
+            backBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                renderQuiz();
+            });
+        } else {
+            console.error('Back to Quiz button not found');
+        }
+    } catch (error) {
+        console.error('Error showing quiz statistics:', error);
+        quizContainer.innerHTML = '<p>Error loading quiz statistics.</p>';
+    }
+}
+
 function renderQuiz() {
     try {
         if (!quizContainer) {
             throw new Error('Quiz container not found');
         }
+        quizContainer.innerHTML = `
+            <div class="quiz-header">
+                <h3>Quiz</h3>
+                <button class="quiz-btn quiz-action-btn" id="view-statistics"><i class="fas fa-chart-bar"></i> Stats</button>
+            </div>
+            <div class="quiz-content">
+                <div class="quiz-progress-bar">
+                    <div class="quiz-progress-bar-fill" id="quiz-progress-bar-fill" style="width: ${(quizState.totalQuestions / quizState.maxQuestions) * 100}%"></div>
+                </div>
+                <div class="quiz-score-timer">
+                    <div id="quiz-score">Score: <span id="score">${quizState.score}</span> / <span id="total-questions">${quizState.totalQuestions}</span></div>
+                    <div id="quiz-timer" class="quiz-timer"><i class="fas fa-clock"></i> <span>${quizState.timeLeft}s</span></div>
+                </div>
+                <div id="quiz-question" class="quiz-question"></div>
+                <div id="quiz-options" class="quiz-options"></div>
+                <div id="quiz-feedback" class="quiz-feedback"></div>
+                <div class="quiz-actions">
+                    <button class="quiz-btn quiz-action-btn" id="next-question" disabled>Next</button>
+                    <button class="quiz-btn quiz-action-btn" id="restart-quiz" style="display: none;">Restart</button>
+                </div>
+            </div>
+        `;
+        const newQuizQuestion = document.getElementById('quiz-question');
+        const newQuizOptions = document.getElementById('quiz-options');
+        const newQuizFeedback = document.getElementById('quiz-feedback');
+        const newNextQuestionBtn = document.getElementById('next-question');
+        const newRestartQuizBtn = document.getElementById('restart-quiz');
+        const newScoreDisplay = document.getElementById('score');
+        const newTotalQuestionsDisplay = document.getElementById('total-questions');
+        const newViewStatisticsBtn = document.getElementById('view-statistics');
+
+        newViewStatisticsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearInterval(timerInterval);
+            showQuizStatistics();
+        });
+
+        if (quizState.totalQuestions >= quizState.maxQuestions && !quizState.isResultSaved) {
+            quizHistory.unshift({
+                score: quizState.score,
+                totalQuestions: quizState.totalQuestions,
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('quizHistory', JSON.stringify(quizHistory));
+            quizState.isResultSaved = true;
+            localStorage.setItem('quizState', JSON.stringify(quizState));
+        }
+
         if (quizState.totalQuestions >= quizState.maxQuestions) {
-            quizQuestion.innerHTML = '<h2>Quiz Completed!</h2>';
-            quizOptions.innerHTML = '';
-            quizFeedback.innerHTML = `Final Score: ${quizState.score} / ${quizState.totalQuestions}`;
-            nextQuestionBtn.style.display = 'none';
-            restartQuizBtn.style.display = 'block';
+            clearInterval(timerInterval);
+            const percentage = Math.round((quizState.score / quizState.totalQuestions) * 100);
+            newQuizQuestion.innerHTML = '<h2>Quiz Completed!</h2>';
+            newQuizOptions.innerHTML = '';
+            newQuizFeedback.innerHTML = `
+                <p>Final Score: ${quizState.score} / ${quizState.totalQuestions} (${percentage}%)</p>
+                <p>${percentage >= 80 ? 'Excellent job!' : percentage >= 50 ? 'Good effort!' : 'Keep practicing!'}</p>
+            `;
+            newNextQuestionBtn.style.display = 'none';
+            newRestartQuizBtn.style.display = 'block';
             quizState.isActive = false;
             localStorage.setItem('quizState', JSON.stringify(quizState));
+            if (percentage >= 80) {
+                triggerConfetti();
+            }
+            newRestartQuizBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                startQuiz();
+            });
             return;
         }
 
@@ -503,40 +763,84 @@ function renderQuiz() {
         }
 
         if (!quizState.currentQuestion) {
-            quizQuestion.innerHTML = '<p>Error: Unable to load quiz question.</p>';
-            quizOptions.innerHTML = '';
-            quizFeedback.innerHTML = '';
-            nextQuestionBtn.style.display = 'none';
-            restartQuizBtn.style.display = 'block';
+            clearInterval(timerInterval);
+            newQuizQuestion.innerHTML = '<p>Error: Unable to load quiz question. Dictionary data may not be available.</p>';
+            newQuizOptions.innerHTML = '';
+            newQuizFeedback.innerHTML = '';
+            newNextQuestionBtn.style.display = 'none';
+            newRestartQuizBtn.style.display = 'block';
             quizState.isActive = false;
             localStorage.setItem('quizState', JSON.stringify(quizState));
+            newRestartQuizBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                startQuiz();
+            });
             return;
         }
 
         const { meaning, options, isEnglishToBangla } = quizState.currentQuestion;
-        quizQuestion.innerHTML = isEnglishToBangla
-            ? `<p>What is the Bangla meaning of "${quizState.currentQuestion.word}"?</p>`
+        newQuizQuestion.innerHTML = isEnglishToBangla
+            ? `<p>What is the Bangla meaning of "<span style="text-transform:capitalize">${quizState.currentQuestion.word}</span>"?</p>`
             : `<p>What is the English word for "${meaning}"?</p>`;
-        quizOptions.innerHTML = options.map((option, index) => `
+        newQuizOptions.innerHTML = options.map((option, index) => `
             <button class="quiz-option" data-index="${index}">
                 ${isEnglishToBangla ? dictionary[option] : option}
             </button>
         `).join('');
-        quizFeedback.innerHTML = '';
-        nextQuestionBtn.disabled = true;
-        nextQuestionBtn.style.display = 'block';
-        restartQuizBtn.style.display = 'none';
-        scoreDisplay.textContent = quizState.score;
-        totalQuestionsDisplay.textContent = quizState.totalQuestions;
+        newQuizFeedback.innerHTML = '';
+        newNextQuestionBtn.disabled = true;
+        newNextQuestionBtn.style.display = 'block';
+        newRestartQuizBtn.style.display = 'none';
+        newScoreDisplay.textContent = quizState.score;
+        newTotalQuestionsDisplay.textContent = quizState.totalQuestions;
         localStorage.setItem('quizState', JSON.stringify(quizState));
+
+        startTimer(newQuizOptions, newNextQuestionBtn, newQuizFeedback);
+
+        newQuizOptions.addEventListener('click', (e) => {
+            const optionBtn = e.target.closest('.quiz-option');
+            if (!optionBtn || !newNextQuestionBtn.disabled || quizState.timeLeft <= 0) return;
+            try {
+                clearInterval(timerInterval);
+                const selectedIndex = parseInt(optionBtn.dataset.index);
+                quizState.totalQuestions++;
+                const { word, meaning, correctIndex, isEnglishToBangla } = quizState.currentQuestion;
+                if (selectedIndex === correctIndex) {
+                    quizState.score++;
+                    newQuizFeedback.innerHTML = `
+                        <p class="correct">Correct!</p>
+                    `;
+                    optionBtn.classList.add('correct');
+                } else {
+                    const correctAnswer = isEnglishToBangla ? meaning : word;
+                    newQuizFeedback.innerHTML = `
+                        <p class="incorrect">Incorrect. The correct answer is "${correctAnswer}".</p>
+                    `;
+                    optionBtn.classList.add('incorrect');
+                    newQuizOptions.querySelector(`button[data-index="${correctIndex}"]`).classList.add('correct');
+                }
+                newScoreDisplay.textContent = quizState.score;
+                newTotalQuestionsDisplay.textContent = quizState.totalQuestions;
+                newNextQuestionBtn.disabled = false;
+                newQuizOptions.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
+                quizState.currentQuestion = null;
+                localStorage.setItem('quizState', JSON.stringify(quizState));
+            } catch (error) {
+                console.error('Error handling quiz option click:', error);
+                newQuizFeedback.innerHTML = '<p>Error processing answer.</p>';
+            }
+        });
+
+        newNextQuestionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearInterval(timerInterval);
+            renderQuiz();
+        });
     } catch (error) {
         console.error('Error rendering quiz:', error);
-        quizQuestion.innerHTML = '<p>Error loading quiz.</p>';
-        quizOptions.innerHTML = '';
-        quizFeedback.innerHTML = '';
-        nextQuestionBtn.style.display = 'none';
-        restartQuizBtn.style.display = 'block';
+        quizContainer.innerHTML = '<p>Error loading quiz. Dictionary data may not be available.</p>';
         quizState.isActive = false;
+        clearInterval(timerInterval);
         localStorage.setItem('quizState', JSON.stringify(quizState));
     }
 }
@@ -546,51 +850,14 @@ function startQuiz() {
         currentQuestion: null,
         score: 0,
         totalQuestions: 0,
-        maxQuestions: 10,
-        isActive: true
+        maxQuestions: 15,
+        isActive: true,
+        isResultSaved: false,
+        timeLeft: 15
     };
     localStorage.setItem('quizState', JSON.stringify(quizState));
     renderQuiz();
 }
-
-quizOptions.addEventListener('click', (e) => {
-    const optionBtn = e.target.closest('.quiz-option');
-    if (!optionBtn || !nextQuestionBtn.disabled) return;
-    try {
-        const selectedIndex = parseInt(optionBtn.dataset.index);
-        quizState.totalQuestions++;
-        const { word, meaning, correctIndex, isEnglishToBangla } = quizState.currentQuestion;
-        if (selectedIndex === correctIndex) {
-            quizState.score++;
-            quizFeedback.innerHTML = '<p class="correct">Correct!</p>';
-            optionBtn.classList.add('correct');
-        } else {
-            const correctAnswer = isEnglishToBangla ? meaning : word;
-            quizFeedback.innerHTML = `<p class="incorrect">Incorrect. The correct answer is "${correctAnswer}".</p>`;
-            optionBtn.classList.add('incorrect');
-            quizOptions.querySelector(`button[data-index="${correctIndex}"]`).classList.add('correct');
-        }
-        scoreDisplay.textContent = quizState.score;
-        totalQuestionsDisplay.textContent = quizState.totalQuestions;
-        nextQuestionBtn.disabled = false;
-        quizOptions.querySelectorAll('.quiz-option').forEach(btn => btn.disabled = true);
-        quizState.currentQuestion = null; // Clear current question for next render
-        localStorage.setItem('quizState', JSON.stringify(quizState));
-    } catch (error) {
-        console.error('Error handling quiz option click:', error);
-        quizFeedback.innerHTML = '<p>Error processing answer.</p>';
-    }
-});
-
-nextQuestionBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    renderQuiz();
-});
-
-restartQuizBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    startQuiz();
-});
 
 try {
     if (typeof dictionary === 'undefined') {
